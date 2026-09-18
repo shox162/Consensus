@@ -3,8 +3,10 @@
   const ctx = canvas.getContext("2d");
   const hud = document.getElementById("hud");
   const keyList = document.getElementById("keyList");
+  const wheelsEl = document.getElementById("wheels");
   const phasePill = document.getElementById("phasePill");
   const statusText = document.getElementById("statusText");
+  const pointers = new Map();
 
   const I18N = {
     sr: {
@@ -19,14 +21,17 @@
       flow: "Tok",
       start: "Start",
       reset: "Reset",
-      hint: "Prvi taster volana pokreće igru. A/D i J/L skreću. Dovedi krugove da se dotaknu — spajaju se i zatim voze zajedno.",
+      hint: "Prvi taster ili dodir volana pokreće igru. Na telefonu: drži ◀ ▶ ili prevuci prsten. Na tastaturi: A/D i J/L.",
+      wheels: "Touch volani",
+      status_ready: "Pritisni volan ili ◀ ▶ da krene.",
+      status_move: "Pritisni volan ili ◀ ▶ da krene.",
       tableAria: "Sto sa krugovima",
       langLabel: "Jezik",
       phase_ready: "spreman",
       phase_play: "u toku",
       phase_win: "konsenzus",
-      status_ready: "Pritisni bilo koji volan da krene.",
-      status_move: "Pritisni bilo koji volan da krene.",
+      status_ready: "Pritisni volan ili ◀ ▶ da krene.",
+      status_move: "Pritisni volan ili ◀ ▶ da krene.",
       status_reset: "Nova runda za {sec}s.",
       status_live: "Volani su živi. Spoji krugove preklapanjem.",
       status_merge: "Merge: {names}. Sada voze jedan krug.",
@@ -48,14 +53,15 @@
       flow: "Flow",
       start: "Start",
       reset: "Reset",
-      hint: "The first wheel key starts the game. A/D and J/L steer. Drive the circles until they touch — they merge, then steer together.",
+      hint: "The first wheel key or touch starts the game. On a phone: hold ◀ ▶ or drag a ring. On a keyboard: A/D and J/L.",
+      wheels: "Touch wheels",
       tableAria: "Table with circles",
       langLabel: "Language",
       phase_ready: "ready",
       phase_play: "in play",
       phase_win: "consensus",
-      status_ready: "Press any wheel key to start.",
-      status_move: "Press any wheel key to start.",
+      status_ready: "Press a wheel or ◀ ▶ to start.",
+      status_move: "Press a wheel or ◀ ▶ to start.",
       status_reset: "New round in {sec}s.",
       status_live: "Wheels are live. Overlap the circles to merge.",
       status_merge: "Merge: {names}. They now steer one circle.",
@@ -191,6 +197,8 @@
         right: scheme[i].right,
         label: scheme[i].label,
         impulse: 0,
+        touchLeft: false,
+        touchRight: false,
       };
       state.players.push(player);
       state.groups.push({
@@ -202,6 +210,7 @@
         r: 28,
         color: COLORS[i].fill,
         speed: 78,
+        touchSteer: 0,
       });
     }
     state.obstacles = [
@@ -210,7 +219,68 @@
       { x: CX + 10, y: CY + 110, r: 28 },
       { x: CX - 20, y: CY - 130, r: 24 },
     ];
+    pointers.clear();
+    renderWheels();
     setPhase("ready", "status_ready");
+  }
+
+  function renderWheels() {
+    wheelsEl.innerHTML = state.players
+      .map((p) => `
+        <div class="wheel" data-player="${p.id}">
+          <button type="button" data-player="${p.id}" data-dir="-1" aria-label="left">◀</button>
+          <span class="who"><i style="background:${p.color.fill};color:${p.color.fill}"></i>${p.id + 1}</span>
+          <button type="button" data-player="${p.id}" data-dir="1" aria-label="right">▶</button>
+        </div>`)
+      .join("");
+  }
+
+  function tryStart() {
+    if (state.phase === "ready") setPhase("play", "status_live");
+  }
+
+  function groupForDrivers(drivers) {
+    return state.groups.find((g) => drivers.every((d) => g.drivers.includes(d)));
+  }
+
+  function canvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  }
+
+  function hitGroup(pt) {
+    let best = null;
+    let bestD = Infinity;
+    for (const g of state.groups) {
+      const d = Math.hypot(g.x - pt.x, g.y - pt.y);
+      if (d < g.r + 56 && d < bestD) {
+        best = g;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  function applyCanvasSteer(g, pt) {
+    const ang = Math.atan2(pt.y - g.y, pt.x - g.x);
+    let diff = ang - g.heading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    g.touchSteer = Math.max(-1.5, Math.min(1.5, diff / 0.65));
+  }
+
+  function clearTouches() {
+    state.keys.clear();
+    pointers.clear();
+    for (const p of state.players) {
+      p.touchLeft = false;
+      p.touchRight = false;
+    }
+    for (const g of state.groups) g.touchSteer = 0;
+    wheelsEl.querySelectorAll("button.held").forEach((b) => b.classList.remove("held"));
   }
 
   function renderKeys() {
@@ -231,8 +301,11 @@
       const p = state.players[id];
       if (state.keys.has(p.left)) steer -= 1;
       if (state.keys.has(p.right)) steer += 1;
+      if (p.touchLeft) steer -= 1;
+      if (p.touchRight) steer += 1;
       steer += p.impulse;
     }
+    steer += group.touchSteer || 0;
     return steer;
   }
 
@@ -265,6 +338,7 @@
       r: Math.sqrt(area),
       color: mixHex(a.color, b.color),
       speed: 70 + drivers.length * 4,
+      touchSteer: (a.touchSteer || 0) + (b.touchSteer || 0),
     };
     state.groups = state.groups.filter((x) => x !== a && x !== b);
     state.groups.push(g);
@@ -600,14 +674,84 @@
       if (!e.repeat) player.impulse += player.left === e.code ? -1.6 : 1.6;
     }
     state.keys.add(e.code);
-    if (state.phase === "ready" && player) setPhase("play", "status_live");
+    if (player) tryStart();
   });
   document.getElementById("langSwitch").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-lang]");
     if (btn) setLang(btn.dataset.lang);
   });
   window.addEventListener("keyup", (e) => state.keys.delete(e.code));
-  window.addEventListener("blur", () => state.keys.clear());
+  window.addEventListener("blur", clearTouches);
+
+  function releaseWheelPointer(e) {
+    const rec = pointers.get(e.pointerId);
+    if (!rec || rec.kind !== "wheel") return;
+    pointers.delete(e.pointerId);
+    const p = state.players[rec.playerId];
+    if (p) {
+      if (rec.dir < 0) p.touchLeft = false;
+      else p.touchRight = false;
+    }
+    const btn = wheelsEl.querySelector(`button[data-player="${rec.playerId}"][data-dir="${rec.dir}"]`);
+    if (btn) btn.classList.remove("held");
+  }
+
+  wheelsEl.addEventListener("pointerdown", (e) => {
+    const btn = e.target.closest("button[data-player]");
+    if (!btn) return;
+    e.preventDefault();
+    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+    const playerId = Number(btn.dataset.player);
+    const dir = Number(btn.dataset.dir);
+    pointers.set(e.pointerId, { kind: "wheel", playerId, dir });
+    const p = state.players[playerId];
+    if (p) {
+      if (dir < 0) p.touchLeft = true;
+      else p.touchRight = true;
+      p.impulse += dir * 1.6;
+    }
+    btn.classList.add("held");
+    tryStart();
+  });
+  wheelsEl.addEventListener("pointerup", releaseWheelPointer);
+  wheelsEl.addEventListener("pointercancel", releaseWheelPointer);
+  wheelsEl.addEventListener("lostpointercapture", releaseWheelPointer);
+
+  function endCanvasPointer(e) {
+    const rec = pointers.get(e.pointerId);
+    if (!rec || rec.kind !== "canvas") return;
+    pointers.delete(e.pointerId);
+    const still = [...pointers.values()].some(
+      (r) => r.kind === "canvas" && r.drivers.some((d) => rec.drivers.includes(d))
+    );
+    if (!still) {
+      const g = groupForDrivers(rec.drivers);
+      if (g) g.touchSteer = 0;
+    }
+  }
+
+  canvas.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const pt = canvasPoint(e);
+    const g = hitGroup(pt);
+    if (!g) return;
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    pointers.set(e.pointerId, { kind: "canvas", drivers: g.drivers.slice() });
+    applyCanvasSteer(g, pt);
+    tryStart();
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    const rec = pointers.get(e.pointerId);
+    if (!rec || rec.kind !== "canvas") return;
+    const g = groupForDrivers(rec.drivers);
+    if (!g) return;
+    rec.drivers = g.drivers.slice();
+    applyCanvasSteer(g, canvasPoint(e));
+  });
+  canvas.addEventListener("pointerup", endCanvasPointer);
+  canvas.addEventListener("pointercancel", endCanvasPointer);
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  wheelsEl.addEventListener("contextmenu", (e) => e.preventDefault());
 
   window.Station3 = {
     state,
