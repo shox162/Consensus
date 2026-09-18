@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stanica 3 — Reach Consensus · demo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div>
+        <p class="kicker" data-i18n="kicker">Swiss Pavilion · EXPO 2027 · Stanica 3</p>
+        <h1 data-i18n="title">Reach Consensus</h1>
+      </div>
+      <div class="lang" id="langSwitch" role="group" aria-label="Language">
+        <button type="button" data-lang="sr" class="on">
+          <span class="flag flag-rs" aria-hidden="true"></span>
+          SRP
+        </button>
+        <button type="button" data-lang="en">
+          <span class="flag flag-gb" aria-hidden="true"></span>
+          ENG
+        </button>
+      </div>
+      <div class="status" id="status">
+        <span class="pill" id="phasePill">spreman</span>
+        <span id="statusText">Pomeri krugove jedno ka drugom.</span>
+      </div>
+    </header>
+
+    <div class="stage-wrap">
+      <canvas id="table" width="900" height="900" data-i18n-aria="tableAria" aria-label="Sto sa krugovima"></canvas>
+    </div>
+
+    <aside class="panel">
+      <section>
+        <h2 data-i18n="players">Igrači</h2>
+        <div class="seg" id="countSeg">
+          <button type="button" data-count="2" class="on">2</button>
+          <button type="button" data-count="4">4</button>
+          <button type="button" data-count="6">6</button>
+        </div>
+        <ul class="keys" id="keyList"></ul>
+      </section>
+      <section>
+        <h2 data-i18n="balance">Balans</h2>
+        <label><span data-i18n="overlap">Preklapanje</span> <span id="ovlVal">20%</span>
+          <input type="range" id="overlap" min="8" max="70" value="20" />
+        </label>
+        <label><span data-i18n="attract">Atrakcija</span> <span id="attVal">0.55</span>
+          <input type="range" id="attract" min="0" max="80" value="55" />
+        </label>
+        <label><span data-i18n="hold">Hold merge</span> <span id="holdVal">0.12s</span>
+          <input type="range" id="hold" min="0" max="12" value="1" />
+        </label>
+      </section>
+      <section>
+        <h2 data-i18n="flow">Tok</h2>
+        <p class="hint" data-i18n="hint">Prvi taster volana pokreće igru. A/D i J/L skreću. Dovedi krugove da se dotaknu — spajaju se i zatim voze zajedno.</p>
+      </section>
+    </aside>
+  </div>
+  <script src="game.js?v=13"></script>
+</body>
+</html>
